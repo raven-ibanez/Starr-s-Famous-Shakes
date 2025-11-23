@@ -4,16 +4,33 @@ export default {
   theme: {
     extend: {
       colors: {
-        ramen: {
-          red: '#D7263D',
-          dark: '#0B0A0A',
-          charcoal: '#111113',
-          cream: '#FFF3E0',
-          beige: '#F7E7CE',
-          gold: '#E0A106',
-          sesame: '#D1C7B7',
-          seaweed: '#1F2937',
-          kimchi: '#B81D24'
+        starrs: {
+          teal: {
+            light: '#B8E6D3',
+            DEFAULT: '#4ECDC4',
+            dark: '#2A9D8F',
+            darker: '#1A7A6E'
+          },
+          mint: {
+            light: '#E0F7F4',
+            DEFAULT: '#A8E6CF',
+            dark: '#7FD3B0'
+          },
+          cream: {
+            light: '#FFF8E7',
+            DEFAULT: '#FFF3E0',
+            dark: '#F7E7CE'
+          },
+          green: {
+            light: '#C8E6C9',
+            DEFAULT: '#66BB6A',
+            dark: '#4CAF50'
+          },
+          accent: {
+            teal: '#2DD4BF',
+            green: '#10B981',
+            dark: '#0F766E'
+          }
         }
       },
       fontFamily: {

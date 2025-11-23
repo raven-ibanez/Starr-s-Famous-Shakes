@@ -2,14 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Ramen Yard Custom Styles */
-/* Minimal helpers for ramen palette when needed outside tailwind tokens */
-.bg-ramen-cream { background-color: #FFF3E0; }
-.bg-ramen-beige { background-color: #F7E7CE; }
-.text-ramen-red { color: #D7263D; }
-.text-ramen-dark { color: #0B0A0A; }
-.border-ramen-sesame { border-color: #D1C7B7; }
-.ring-ramen-gold { --tw-ring-color: #E0A106; }
+/* Starr's Famous Shakes Custom Styles */
+/* Color helpers for Starrs palette */
+.bg-starrs-teal { background-color: #B8E6D3; }
+.bg-starrs-mint { background-color: #E0F7F4; }
+.bg-starrs-cream { background-color: #FFF8E7; }
+.text-starrs-teal { color: #2A9D8F; }
+.text-starrs-green { color: #10B981; }
+.border-starrs-teal { border-color: #4ECDC4; }
 
 /* Hide scrollbar for mobile nav */
 .scrollbar-hide {
@@ -25,6 +25,12 @@
 img {
   image-rendering: -webkit-optimize-contrast;
   image-rendering: crisp-edges;
+}
+
+/* Mobile touch optimization */
+button, a {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* Preload critical images */
