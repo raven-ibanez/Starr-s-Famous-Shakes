@@ -34,7 +34,6 @@ const signPayload = async (method: string, path: string, body: string, secret: s
 };
 
 const proxyRequest = async (
-  req: VercelRequest,
   res: VercelResponse,
   path: string,
   payload: Record<string, unknown>,
@@ -60,14 +59,16 @@ const proxyRequest = async (
   const responseBody = await upstreamResponse.text();
   if (!upstreamResponse.ok) {
     res.status(upstreamResponse.status).json({ error: responseBody });
+    console.error('Lalamove upstream error', {
+      status: upstreamResponse.status,
+      body: responseBody,
+      url: upstreamUrl,
+      payload
+    });
     return null;
   }
 
-  res.status(200).setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  const json = JSON.parse(responseBody);
-  return json;
+  return JSON.parse(responseBody);
 };
 
 const createStops = (
@@ -116,9 +117,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(204).end();
   }
 
+  const slug = (req.query.slug as string[]) || [];
+  const action = slug[0];
+
+  if (req.method !== 'POST' || (action !== 'quote' && action !== 'order')) {
+    return res.status(405).end('Method Not Allowed');
+  }
+
   const body = req.body;
-  if (!body || !body.deliveryAddress) {
-    return res.status(400).json({ error: 'Missing deliveryAddress' });
+  if (!body) {
+    return res.status(400).json({ error: 'Missing body' });
   }
 
   const config: DeliveryStoreConfig = {
@@ -132,7 +140,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     storeLongitude: Number(body.storeLongitude)
   };
 
-  if (typeof body.quote !== 'undefined') {
+  if (action === 'quote') {
+    if (!body.deliveryAddress || body.deliveryLat === undefined || body.deliveryLng === undefined) {
+      return res.status(400).json({ error: 'Missing delivery fields' });
+    }
+
     const quotePayload = {
       data: {
         serviceType: config.serviceType,
@@ -150,7 +162,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     };
 
-    const response = await proxyRequest(req, res, '/quotations', quotePayload, config.market, config.sandbox);
+    const response = await proxyRequest(res, '/quotations', quotePayload, config.market, config.sandbox);
     if (response) {
       return res.json({
         quotationId: response.data?.quotationId,
@@ -170,16 +182,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     data: {
       quotationId: body.quotationId,
       sender: {
-        stopId: body.stopIdSender,
+        stopId: body.senderStopId,
         name: config.storeName,
         phone: config.storePhone
       },
       recipients: [
         {
-          stopId: body.stopIdRecipient,
+          stopId: body.recipientStopId,
           name: body.recipientName,
           phone: body.recipientPhone,
-          remarks: ''
+          remarks: body.recipientRemarks || ''
         }
       ],
       isPODEnabled: true,
@@ -187,7 +199,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   };
 
-  const response = await proxyRequest(req, res, '/orders', orderPayload, config.market, config.sandbox);
+  const response = await proxyRequest(res, '/orders', orderPayload, config.market, config.sandbox);
   if (response) {
     return res.json({
       orderId: response.data?.orderId,
