@@ -1,17 +1,30 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, Edit, Trash2, Save, X, ArrowLeft, Coffee, TrendingUp, Package, Users, Lock, FolderOpen, CreditCard, Settings, ShoppingCart } from 'lucide-react';
+import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
+import { Plus, Edit, Trash2, Save, X, ArrowLeft, Coffee, TrendingUp, Package, Users, Lock, FolderOpen, CreditCard, Settings, ShoppingCart, Loader2, MapPin } from 'lucide-react';
 import { MenuItem, Variation, AddOn } from '../types';
 import { addOnCategories } from '../data/menuData';
 import { useMenu } from '../hooks/useMenu';
 import { useCategories, Category } from '../hooks/useCategories';
 import { useOrders } from '../hooks/useOrders';
-import ImageUpload from './ImageUpload';
-import CategoryManager from './CategoryManager';
-import PaymentMethodManager from './PaymentMethodManager';
-import SiteSettingsManager from './SiteSettingsManager';
-import OrderManager from './OrderManager';
+
+// Lazy load heavy sub-components for code splitting
+const ImageUpload = lazy(() => import('./ImageUpload'));
+const CategoryManager = lazy(() => import('./CategoryManager'));
+const PaymentMethodManager = lazy(() => import('./PaymentMethodManager'));
+const SiteSettingsManager = lazy(() => import('./SiteSettingsManager'));
+const OrderManager = lazy(() => import('./OrderManager'));
+const BranchManager = lazy(() => import('./BranchManager'));
+
+// Loading fallback component
+const LoadingFallback = ({ message = 'Loading...' }: { message?: string }) => (
+  <div className="flex items-center justify-center p-8">
+    <div className="text-center">
+      <Loader2 className="h-8 w-8 animate-spin text-green-600 mx-auto mb-2" />
+      <p className="text-gray-600">{message}</p>
+    </div>
+  </div>
+);
 
 const AdminDashboard: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -27,7 +40,7 @@ const AdminDashboard: React.FC = () => {
   const { menuItems, loading, addMenuItem, updateMenuItem, deleteMenuItem } = useMenu();
   const { categories } = useCategories();
   const { getOrderStats } = useOrders();
-  const [currentView, setCurrentView] = useState<'dashboard' | 'items' | 'add' | 'edit' | 'categories' | 'payments' | 'settings' | 'orders'>('dashboard');
+  const [currentView, setCurrentView] = useState<'dashboard' | 'items' | 'add' | 'edit' | 'categories' | 'payments' | 'settings' | 'orders' | 'branches'>('dashboard');
   const [orderStats, setOrderStats] = useState({
     total_orders: 0,
     pending_orders: 0,
@@ -120,10 +133,10 @@ const AdminDashboard: React.FC = () => {
       const item = menuItems.find(i => i.id === id);
       return item ? item.name : 'Unknown Item';
     }).slice(0, 5); // Show first 5 items
-    
+
     const displayNames = itemNames.join(', ');
     const moreItems = selectedItems.length > 5 ? ` and ${selectedItems.length - 5} more items` : '';
-    
+
     if (confirm(`Are you sure you want to delete ${selectedItems.length} item(s)?\n\nItems to delete: ${displayNames}${moreItems}\n\nThis action cannot be undone.`)) {
       try {
         setIsProcessing(true);
@@ -170,8 +183,8 @@ const AdminDashboard: React.FC = () => {
   };
 
   const handleSelectItem = (itemId: string) => {
-    setSelectedItems(prev => 
-      prev.includes(itemId) 
+    setSelectedItems(prev =>
+      prev.includes(itemId)
         ? prev.filter(id => id !== itemId)
         : [...prev, itemId]
     );
@@ -294,7 +307,7 @@ const AdminDashboard: React.FC = () => {
             <h1 className="text-2xl font-playfair font-semibold text-black">Admin Access</h1>
             <p className="text-gray-600 mt-2">Enter password to access the admin dashboard</p>
           </div>
-          
+
           <form onSubmit={handleLogin}>
             <div className="mb-6">
               <label className="block text-sm font-medium text-black mb-2">Password</label>
@@ -310,7 +323,7 @@ const AdminDashboard: React.FC = () => {
                 <p className="text-red-500 text-sm mt-2">{loginError}</p>
               )}
             </div>
-            
+
             <button
               type="submit"
               className="w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 transition-colors duration-200 font-medium"
@@ -500,10 +513,12 @@ const AdminDashboard: React.FC = () => {
             </div>
 
             <div className="mb-8">
-              <ImageUpload
-                currentImage={formData.image}
-                onImageChange={(imageUrl) => setFormData({ ...formData, image: imageUrl })}
-              />
+              <Suspense fallback={<LoadingFallback message="Loading image upload..." />}>
+                <ImageUpload
+                  currentImage={formData.image}
+                  onImageChange={(imageUrl) => setFormData({ ...formData, image: imageUrl })}
+                />
+              </Suspense>
             </div>
 
             {/* Variations Section */}
@@ -650,7 +665,7 @@ const AdminDashboard: React.FC = () => {
                   <h3 className="text-lg font-medium text-black mb-1">Bulk Actions</h3>
                   <p className="text-sm text-gray-600">{selectedItems.length} item(s) selected</p>
                 </div>
-                
+
                 <div className="flex flex-col sm:flex-row gap-3">
                   {/* Change Category */}
                   <div className="flex items-center space-x-2">
@@ -671,7 +686,7 @@ const AdminDashboard: React.FC = () => {
                       ))}
                     </select>
                   </div>
-                  
+
                   {/* Remove Items */}
                   <button
                     onClick={handleBulkRemove}
@@ -681,7 +696,7 @@ const AdminDashboard: React.FC = () => {
                     <Trash2 className="h-4 w-4" />
                     <span>{isProcessing ? 'Removing...' : 'Remove Selected'}</span>
                   </button>
-                  
+
                   {/* Clear Selection */}
                   <button
                     onClick={() => {
@@ -795,11 +810,10 @@ const AdminDashboard: React.FC = () => {
                               Popular
                             </span>
                           )}
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            item.available 
-                              ? 'bg-green-100 text-green-800' 
-                              : 'bg-red-100 text-red-800'
-                          }`}>
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${item.available
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-red-100 text-red-800'
+                            }`}>
                             {item.available ? 'Available' : 'Unavailable'}
                           </span>
                         </div>
@@ -859,14 +873,14 @@ const AdminDashboard: React.FC = () => {
                       </button>
                     </div>
                   </div>
-                  
+
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1 min-w-0">
                       <h3 className="font-medium text-gray-900 truncate">{item.name}</h3>
                       <p className="text-sm text-gray-500 mt-1 line-clamp-2">{item.description}</p>
                     </div>
                   </div>
-                  
+
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
                       <span className="text-gray-500">Category:</span>
@@ -896,7 +910,7 @@ const AdminDashboard: React.FC = () => {
                       <span className="ml-1 text-gray-900">{item.addOns?.length || 0}</span>
                     </div>
                   </div>
-                  
+
                   <div className="flex items-center justify-between mt-3">
                     <div className="flex items-center space-x-2">
                       {item.popular && (
@@ -904,11 +918,10 @@ const AdminDashboard: React.FC = () => {
                           Popular
                         </span>
                       )}
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        item.available 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-red-100 text-red-800'
-                      }`}>
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${item.available
+                        ? 'bg-green-100 text-green-800'
+                        : 'bg-red-100 text-red-800'
+                        }`}>
                         {item.available ? 'Available' : 'Unavailable'}
                       </span>
                     </div>
@@ -924,17 +937,41 @@ const AdminDashboard: React.FC = () => {
 
   // Orders View
   if (currentView === 'orders') {
-    return <OrderManager onBack={() => setCurrentView('dashboard')} />;
+    return (
+      <Suspense fallback={
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <LoadingFallback message="Loading Order Manager..." />
+        </div>
+      }>
+        <OrderManager onBack={() => setCurrentView('dashboard')} />
+      </Suspense>
+    );
   }
 
   // Categories View
   if (currentView === 'categories') {
-    return <CategoryManager onBack={() => setCurrentView('dashboard')} />;
+    return (
+      <Suspense fallback={
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <LoadingFallback message="Loading Category Manager..." />
+        </div>
+      }>
+        <CategoryManager onBack={() => setCurrentView('dashboard')} />
+      </Suspense>
+    );
   }
 
   // Payment Methods View
   if (currentView === 'payments') {
-    return <PaymentMethodManager onBack={() => setCurrentView('dashboard')} />;
+    return (
+      <Suspense fallback={
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <LoadingFallback message="Loading Payment Methods..." />
+        </div>
+      }>
+        <PaymentMethodManager onBack={() => setCurrentView('dashboard')} />
+      </Suspense>
+    );
   }
 
   // Site Settings View
@@ -959,13 +996,41 @@ const AdminDashboard: React.FC = () => {
         </div>
 
         <div className="max-w-4xl mx-auto px-4 py-8">
-          <SiteSettingsManager />
+          <Suspense fallback={<LoadingFallback message="Loading Site Settings..." />}>
+            <SiteSettingsManager />
+          </Suspense>
         </div>
       </div>
     );
   }
 
   // Dashboard View
+  if (currentView === 'branches') {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="bg-white shadow-sm border-b">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center space-x-4 h-16">
+              <button
+                onClick={() => setCurrentView('dashboard')}
+                className="flex items-center space-x-2 text-gray-600 hover:text-black transition-colors duration-200"
+              >
+                <ArrowLeft className="h-5 w-5" />
+                <span>Dashboard</span>
+              </button>
+              <h1 className="text-2xl font-playfair font-semibold text-black">Branch Management</h1>
+            </div>
+          </div>
+        </div>
+        <div className="max-w-7xl mx-auto px-4 py-8">
+          <Suspense fallback={<LoadingFallback message="Loading Branch Manager..." />}>
+            <BranchManager />
+          </Suspense>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="bg-white shadow-sm border-b">
@@ -1089,6 +1154,13 @@ const AdminDashboard: React.FC = () => {
               >
                 <CreditCard className="h-5 w-5 text-gray-400" />
                 <span className="font-medium text-gray-900">Payment Methods</span>
+              </button>
+              <button
+                onClick={() => setCurrentView('branches')}
+                className="w-full flex items-center space-x-3 p-3 text-left hover:bg-gray-50 rounded-lg transition-colors duration-200"
+              >
+                <MapPin className="h-5 w-5 text-gray-400" />
+                <span className="font-medium text-gray-900">Manage Branches</span>
               </button>
               <button
                 onClick={() => setCurrentView('settings')}

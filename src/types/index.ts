@@ -128,6 +128,20 @@ export interface Order {
   lalamove_order_id?: string | null;
   lalamove_status?: string | null;
   lalamove_tracking_url?: string | null;
+  branch_id?: string | null;
+}
+
+export interface Branch {
+  id: string;
+  name: string;
+  address: string;
+  phone: string;
+  latitude: string;
+  longitude: string;
+  is_main: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface OrderFilters {

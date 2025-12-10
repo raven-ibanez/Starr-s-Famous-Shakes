@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { ArrowLeft, Clock, Search, Loader2 } from 'lucide-react';
-import { CartItem, PaymentMethod, ServiceType, AddressSuggestion } from '../types';
+import { ArrowLeft, Clock, Search, Loader2, MapPin } from 'lucide-react';
+import { CartItem, PaymentMethod, ServiceType, AddressSuggestion, Branch } from '../types';
+import BranchSelector from './BranchSelector';
 import { usePaymentMethods } from '../hooks/usePaymentMethods';
 import { useOrders } from '../hooks/useOrders';
 import { useAddressAutocomplete } from '../hooks/useAddressAutocomplete';
@@ -45,7 +46,30 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack }) =>
   const [isFetchingDeliveryFee, setIsFetchingDeliveryFee] = useState(false);
   const [deliveryFeeError, setDeliveryFeeError] = useState<string | null>(null);
   const { siteSettings } = useSiteSettings();
-  const lalamoveConfig = useMemo(() => buildLalamoveConfig(siteSettings), [siteSettings]);
+  const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
+  const [showBranchSelector, setShowBranchSelector] = useState(false);
+
+  // Load branch from local storage on mount
+  useEffect(() => {
+    const storedBranch = localStorage.getItem('starrs_selected_branch');
+    if (storedBranch) {
+      try {
+        setSelectedBranch(JSON.parse(storedBranch));
+      } catch (e) {
+        console.error('Failed to parse stored branch');
+      }
+    } else {
+      setShowBranchSelector(true);
+    }
+  }, []);
+
+  const handleBranchSelect = (branch: Branch) => {
+    setSelectedBranch(branch);
+    localStorage.setItem('starrs_selected_branch', JSON.stringify(branch));
+    setShowBranchSelector(false);
+  };
+
+  const lalamoveConfig = useMemo(() => buildLalamoveConfig(siteSettings, selectedBranch), [siteSettings, selectedBranch]);
   const lalamoveEnabled = Boolean(lalamoveConfig);
 
   React.useEffect(() => {
@@ -82,6 +106,12 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack }) =>
   };
 
   const handlePlaceOrder = async () => {
+    if (!selectedBranch && serviceType !== 'dine-in') {
+      alert('Please select a branch first.');
+      setShowBranchSelector(true);
+      return;
+    }
+
     setIsSubmitting(true);
     setSubmitError(null);
 
@@ -104,15 +134,17 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack }) =>
           deliveryFee: serviceType === 'delivery' ? deliveryFee ?? undefined : undefined,
           lalamoveQuotationId: serviceType === 'delivery' ? deliveryQuoteId ?? undefined : undefined,
           deliveryLat: serviceType === 'delivery' ? deliveryCoordinates?.lat : undefined,
-          deliveryLng: serviceType === 'delivery' ? deliveryCoordinates?.lng : undefined
+          deliveryLng: serviceType === 'delivery' ? deliveryCoordinates?.lng : undefined,
+          branchId: selectedBranch?.id,
+          branch: selectedBranch || undefined
         }
       );
 
       // Prepare order details for Messenger
-      const timeInfo = serviceType === 'pickup' 
+      const timeInfo = serviceType === 'pickup'
         ? (pickupTime === 'custom' ? customTime : `${pickupTime} minutes`)
         : '';
-      
+
       const orderDetails = `
 🛒 Starr's Famous Shakes ORDER
 📦 Order Number: ${order.order_number}
@@ -124,20 +156,20 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack }) =>
 ${serviceType === 'pickup' ? `⏰ Pickup Time: ${timeInfo}` : ''}
 📋 ORDER DETAILS:
 ${cartItems.map(item => {
-  let itemDetails = `• ${item.name}`;
-  if (item.selectedVariation) {
-    itemDetails += ` (${item.selectedVariation.name})`;
-  }
-  if (item.selectedAddOns && item.selectedAddOns.length > 0) {
-    itemDetails += ` + ${item.selectedAddOns.map(addOn => 
-      addOn.quantity && addOn.quantity > 1 
-        ? `${addOn.name} x${addOn.quantity}`
-        : addOn.name
-    ).join(', ')}`;
-  }
-  itemDetails += ` x${item.quantity} - ₱${item.totalPrice * item.quantity}`;
-  return itemDetails;
-}).join('\n')}
+        let itemDetails = `• ${item.name}`;
+        if (item.selectedVariation) {
+          itemDetails += ` (${item.selectedVariation.name})`;
+        }
+        if (item.selectedAddOns && item.selectedAddOns.length > 0) {
+          itemDetails += ` + ${item.selectedAddOns.map(addOn =>
+            addOn.quantity && addOn.quantity > 1
+              ? `${addOn.name} x${addOn.quantity}`
+              : addOn.name
+          ).join(', ')}`;
+        }
+        itemDetails += ` x${item.quantity} - ₱${item.totalPrice * item.quantity}`;
+        return itemDetails;
+      }).join('\n')}
 
 💰 TOTAL: ₱${totalWithDelivery}
 ${serviceType === 'delivery' ? `🛵 DELIVERY FEE: ${deliveryFeeLabel}` : ''}
@@ -152,21 +184,21 @@ Please confirm this order to proceed. Thank you for choosing Starr's Famous Shak
 
       const encodedMessage = encodeURIComponent(orderDetails);
       const messengerUrl = `https://m.me/StarrsFamousShakes?text=${encodedMessage}`;
-      
+
       // Show success message
       alert(`Order placed successfully!\n\nOrder Number: ${order.order_number}\n\nYou will now be redirected to Messenger to confirm your order.`);
-      
+
       // Open Messenger
       window.open(messengerUrl, '_blank');
-      
+
       // Clear form and go back to menu (you might want to clear cart here)
       // onBack();
-      
+
     } catch (error) {
       console.error('Error placing order:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to place order. Please try again.';
       setSubmitError(errorMessage);
-      
+
       // Check if it's a rate limit error
       if (errorMessage.includes('Rate limit') || errorMessage.includes('wait')) {
         alert(`⚠️ ${errorMessage}\n\nPlease wait before trying again.`);
@@ -210,7 +242,7 @@ Please confirm this order to proceed. Thank you for choosing Starr's Famous Shak
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();
-        setSelectedSuggestionIndex(prev => 
+        setSelectedSuggestionIndex(prev =>
           prev < suggestions.length - 1 ? prev + 1 : prev
         );
         break;
@@ -311,8 +343,8 @@ Please confirm this order to proceed. Thank you for choosing Starr's Famous Shak
     };
   }, [serviceType, address, deliveryCoordinates, lalamoveConfig]);
 
-  const isDetailsValid = customerName && contactNumber && 
-    (serviceType !== 'delivery' || (address && deliveryFee !== null)) && 
+  const isDetailsValid = customerName && contactNumber &&
+    (serviceType !== 'delivery' || (address && deliveryFee !== null)) &&
     (serviceType !== 'pickup' || (pickupTime !== 'custom' || customTime));
 
   if (step === 'details') {
@@ -329,11 +361,36 @@ Please confirm this order to proceed. Thank you for choosing Starr's Famous Shak
           <h1 className="text-3xl font-noto font-semibold text-black ml-8">Order Details</h1>
         </div>
 
+        <BranchSelector
+          isOpen={showBranchSelector}
+          onClose={() => selectedBranch && setShowBranchSelector(false)}
+          onSelect={handleBranchSelect}
+          selectedBranchId={selectedBranch?.id}
+          forced={!selectedBranch}
+        />
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Order Summary */}
           <div className="bg-white rounded-xl shadow-sm p-6">
             <h2 className="text-2xl font-noto font-medium text-black mb-6">Order Summary</h2>
-            
+
+            {/* Branch Indicator */}
+            <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-100 flex justify-between items-center">
+              <div>
+                <p className="text-sm text-gray-500">Ordering from:</p>
+                <div className="flex items-center gap-2 mt-1">
+                  <MapPin className="w-4 h-4 text-pink-500" />
+                  <span className="font-bold text-gray-900">{selectedBranch?.name || 'Select Branch'}</span>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowBranchSelector(true)}
+                className="text-sm text-pink-600 hover:text-pink-700 font-medium"
+              >
+                Change
+              </button>
+            </div>
+
             <div className="space-y-4 mb-6">
               {cartItems.map((item) => (
                 <div key={item.id} className="flex items-center justify-between py-2 border-b border-red-100">
@@ -353,7 +410,7 @@ Please confirm this order to proceed. Thank you for choosing Starr's Famous Shak
                 </div>
               ))}
             </div>
-            
+
             {serviceType === 'delivery' && (
               <div className="flex items-center justify-between text-sm text-gray-600 border-t border-red-200 pt-4">
                 <span>Delivery Fee ({deliveryFeeCurrency})</span>
@@ -374,7 +431,7 @@ Please confirm this order to proceed. Thank you for choosing Starr's Famous Shak
           {/* Customer Details Form */}
           <div className="bg-white rounded-xl shadow-sm p-6">
             <h2 className="text-2xl font-noto font-medium text-black mb-6">Customer Information</h2>
-            
+
             <form className="space-y-6">
               {/* Customer Information */}
               <div>
@@ -440,11 +497,10 @@ Please confirm this order to proceed. Thank you for choosing Starr's Famous Shak
                       key={option.value}
                       type="button"
                       onClick={() => setServiceType(option.value as ServiceType)}
-                      className={`p-4 rounded-lg border-2 transition-all duration-200 ${
-                        serviceType === option.value
-                          ? 'border-red-600 bg-red-600 text-white'
-                          : 'border-red-300 bg-white text-gray-700 hover:border-red-400'
-                      }`}
+                      className={`p-4 rounded-lg border-2 transition-all duration-200 ${serviceType === option.value
+                        ? 'border-red-600 bg-red-600 text-white'
+                        : 'border-red-300 bg-white text-gray-700 hover:border-red-400'
+                        }`}
                     >
                       <div className="text-2xl mb-1">{option.icon}</div>
                       <div className="text-sm font-medium">{option.label}</div>
@@ -469,18 +525,17 @@ Please confirm this order to proceed. Thank you for choosing Starr's Famous Shak
                           key={option.value}
                           type="button"
                           onClick={() => setPickupTime(option.value)}
-                          className={`p-3 rounded-lg border-2 transition-all duration-200 text-sm ${
-                            pickupTime === option.value
-                              ? 'border-red-600 bg-red-600 text-white'
-                              : 'border-red-300 bg-white text-gray-700 hover:border-red-400'
-                          }`}
+                          className={`p-3 rounded-lg border-2 transition-all duration-200 text-sm ${pickupTime === option.value
+                            ? 'border-red-600 bg-red-600 text-white'
+                            : 'border-red-300 bg-white text-gray-700 hover:border-red-400'
+                            }`}
                         >
                           <Clock className="h-4 w-4 mx-auto mb-1" />
                           {option.label}
                         </button>
                       ))}
                     </div>
-                    
+
                     {pickupTime === 'custom' && (
                       <input
                         type="text"
@@ -521,7 +576,7 @@ Please confirm this order to proceed. Thank you for choosing Starr's Famous Shak
                         </div>
                       )}
                     </div>
-                    
+
                     {/* Autocomplete Suggestions Dropdown */}
                     {showSuggestions && addressQuery.length >= 3 && (
                       <div
@@ -583,9 +638,8 @@ Please confirm this order to proceed. Thank you for choosing Starr's Famous Shak
                               key={suggestion.place_id}
                               type="button"
                               onClick={() => handleAddressSelect(suggestion)}
-                              className={`w-full text-left px-4 py-3 hover:bg-red-50 transition-colors duration-200 border-b border-red-100 last:border-b-0 ${
-                                index === selectedSuggestionIndex ? 'bg-red-50' : ''
-                              }`}
+                              className={`w-full text-left px-4 py-3 hover:bg-red-50 transition-colors duration-200 border-b border-red-100 last:border-b-0 ${index === selectedSuggestionIndex ? 'bg-red-50' : ''
+                                }`}
                             >
                               <div className="font-medium text-black text-sm">
                                 {primaryLine}
@@ -607,17 +661,54 @@ Please confirm this order to proceed. Thank you for choosing Starr's Famous Shak
                     {addressQuery.length > 0 && addressQuery.length < 3 && (
                       <p className="text-xs text-gray-500 mt-1">Type at least 3 characters to search</p>
                     )}
+
+                    {/* Address Validation Warning - Shows when address is entered but no coordinates found */}
+                    {serviceType === 'delivery' && address && address.length >= 3 && !deliveryCoordinates && !addressLoading && (
+                      <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                        <div className="flex items-start space-x-2">
+                          <span className="text-amber-600 text-lg">⚠️</span>
+                          <div>
+                            <p className="text-sm font-medium text-amber-800">
+                              We couldn't locate this address on the map
+                            </p>
+                            <p className="text-xs text-amber-700 mt-1">
+                              For accurate delivery, please try one of the following:
+                            </p>
+                            <ul className="text-xs text-amber-700 mt-2 space-y-1 list-disc pl-4">
+                              <li><strong>Select from suggestions:</strong> Choose an address from the dropdown list</li>
+                              <li><strong>Use a nearby landmark:</strong> Search for a well-known place nearby (e.g., mall, school, church)</li>
+                              <li><strong>Be more specific:</strong> Include barangay, street name, or building name</li>
+                              <li><strong>Add landmark below:</strong> Fill in the landmark field with detailed directions</li>
+                            </ul>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  
+
                   <div>
-                    <label className="block text-sm font-medium text-black mb-2">Landmark</label>
+                    <label className="block text-sm font-medium text-black mb-2">
+                      Landmark {address && address.length >= 3 && !deliveryCoordinates && <span className="text-amber-600">(Highly Recommended) *</span>}
+                    </label>
                     <input
                       type="text"
                       value={landmark}
                       onChange={(e) => setLandmark(e.target.value)}
-                      className="w-full px-4 py-3 border border-red-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all duration-200"
-                      placeholder="e.g., Near McDonald's, Beside 7-Eleven, In front of school"
+                      className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all duration-200 ${address && address.length >= 3 && !deliveryCoordinates && !landmark
+                        ? 'border-amber-400 bg-amber-50'
+                        : 'border-red-300'
+                        }`}
+                      placeholder={
+                        address && address.length >= 3 && !deliveryCoordinates
+                          ? "Please add a landmark for accurate delivery (e.g., Near McDonald's, Blue gate house)"
+                          : "e.g., Near McDonald's, Beside 7-Eleven, In front of school"
+                      }
                     />
+                    {address && address.length >= 3 && !deliveryCoordinates && !landmark && (
+                      <p className="text-xs text-amber-600 mt-1">
+                        💡 Since the address couldn't be found on the map, adding a landmark will help the driver find you.
+                      </p>
+                    )}
                   </div>
                 </>
               )}
@@ -637,11 +728,10 @@ Please confirm this order to proceed. Thank you for choosing Starr's Famous Shak
               <button
                 onClick={handleProceedToPayment}
                 disabled={!isDetailsValid}
-                className={`w-full py-4 rounded-xl font-medium text-lg transition-all duration-200 transform ${
-                  isDetailsValid
-                    ? 'bg-red-600 text-white hover:bg-red-700 hover:scale-[1.02]'
-                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                }`}
+                className={`w-full py-4 rounded-xl font-medium text-lg transition-all duration-200 transform ${isDetailsValid
+                  ? 'bg-red-600 text-white hover:bg-red-700 hover:scale-[1.02]'
+                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  }`}
               >
                 Proceed to Payment
               </button>
@@ -670,18 +760,17 @@ Please confirm this order to proceed. Thank you for choosing Starr's Famous Shak
         {/* Payment Method Selection */}
         <div className="bg-white rounded-xl shadow-sm p-6">
           <h2 className="text-2xl font-noto font-medium text-black mb-6">Choose Payment Method</h2>
-          
+
           <div className="grid grid-cols-1 gap-4 mb-6">
             {paymentMethods.map((method) => (
               <button
                 key={method.id}
                 type="button"
                 onClick={() => setPaymentMethod(method.id as PaymentMethod)}
-                className={`p-4 rounded-lg border-2 transition-all duration-200 flex items-center space-x-3 ${
-                  paymentMethod === method.id
-                    ? 'border-red-600 bg-red-600 text-white'
-                    : 'border-red-300 bg-white text-gray-700 hover:border-red-400'
-                }`}
+                className={`p-4 rounded-lg border-2 transition-all duration-200 flex items-center space-x-3 ${paymentMethod === method.id
+                  ? 'border-red-600 bg-red-600 text-white'
+                  : 'border-red-300 bg-white text-gray-700 hover:border-red-400'
+                  }`}
               >
                 <span className="text-2xl">💳</span>
                 <span className="font-medium">{method.name}</span>
@@ -701,8 +790,8 @@ Please confirm this order to proceed. Thank you for choosing Starr's Famous Shak
                   <p className="text-xl font-semibold text-black">Amount: ₱{totalWithDelivery}</p>
                 </div>
                 <div className="flex-shrink-0">
-                  <img 
-                    src={selectedPaymentMethod.qr_code_url} 
+                  <img
+                    src={selectedPaymentMethod.qr_code_url}
                     alt={`${selectedPaymentMethod.name} QR Code`}
                     className="w-32 h-32 rounded-lg border-2 border-red-300 shadow-sm"
                     onError={(e) => {
@@ -727,7 +816,7 @@ Please confirm this order to proceed. Thank you for choosing Starr's Famous Shak
         {/* Order Summary */}
         <div className="bg-white rounded-xl shadow-sm p-6">
           <h2 className="text-2xl font-noto font-medium text-black mb-6">Final Order Summary</h2>
-          
+
           <div className="space-y-4 mb-6">
             <div className="bg-red-50 rounded-lg p-4">
               <h4 className="font-medium text-black mb-2">Customer Details</h4>
@@ -756,8 +845,8 @@ Please confirm this order to proceed. Thank you for choosing Starr's Famous Shak
                   )}
                   {item.selectedAddOns && item.selectedAddOns.length > 0 && (
                     <p className="text-sm text-gray-600">
-                      Add-ons: {item.selectedAddOns.map(addOn => 
-                        addOn.quantity && addOn.quantity > 1 
+                      Add-ons: {item.selectedAddOns.map(addOn =>
+                        addOn.quantity && addOn.quantity > 1
                           ? `${addOn.name} x${addOn.quantity}`
                           : addOn.name
                       ).join(', ')}
@@ -769,7 +858,7 @@ Please confirm this order to proceed. Thank you for choosing Starr's Famous Shak
               </div>
             ))}
           </div>
-          
+
           {serviceType === 'delivery' && (
             <div className="flex items-center justify-between text-sm text-gray-600 border-b border-red-100 pb-2 mb-2">
               <span>Delivery Fee ({deliveryFeeCurrency})</span>
@@ -791,19 +880,47 @@ Please confirm this order to proceed. Thank you for choosing Starr's Famous Shak
               <p className="text-sm text-red-600">{submitError}</p>
             </div>
           )}
-          
+
+          {/* Warning when address couldn't be located and no landmark provided */}
+          {serviceType === 'delivery' && address && !deliveryCoordinates && (
+            <div className="mb-4 p-4 bg-amber-50 border border-amber-300 rounded-lg">
+              <div className="flex items-start space-x-2">
+                <span className="text-amber-600 text-lg">📍</span>
+                <div>
+                  <p className="text-sm font-medium text-amber-800">
+                    Address not found on map
+                  </p>
+                  <p className="text-xs text-amber-700 mt-1">
+                    {landmark
+                      ? `Your landmark "${landmark}" will help the driver find you.`
+                      : 'Consider going back to add a landmark for accurate delivery.'
+                    }
+                  </p>
+                  {!landmark && (
+                    <button
+                      type="button"
+                      onClick={() => setStep('details')}
+                      className="mt-2 text-xs text-amber-700 underline hover:text-amber-900"
+                    >
+                      ← Go back to add a landmark
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           <button
             onClick={handlePlaceOrder}
             disabled={isSubmitting}
-            className={`w-full py-4 rounded-xl font-medium text-lg transition-all duration-200 transform ${
-              isSubmitting
-                ? 'bg-gray-400 text-white cursor-not-allowed'
-                : 'bg-red-600 text-white hover:bg-red-700 hover:scale-[1.02]'
-            }`}
+            className={`w-full py-4 rounded-xl font-medium text-lg transition-all duration-200 transform ${isSubmitting
+              ? 'bg-gray-400 text-white cursor-not-allowed'
+              : 'bg-red-600 text-white hover:bg-red-700 hover:scale-[1.02]'
+              }`}
           >
             {isSubmitting ? 'Placing Order...' : 'Place Order via Messenger'}
           </button>
-          
+
           <p className="text-xs text-gray-500 text-center mt-3">
             You'll be redirected to Facebook Messenger to confirm your order. Don't forget to attach your payment screenshot!
           </p>

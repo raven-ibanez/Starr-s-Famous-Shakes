@@ -1,4 +1,7 @@
 {
+  "/api/lalamove/[action]/route": "app/api/lalamove/[action]/route.js",
+  "/api/orders/route": "app/api/orders/route.js",
+  "/api/orders/stats/route": "app/api/orders/stats/route.js",
   "/page": "app/page.js",
   "/admin/page": "app/admin/page.js"
 }

@@ -11,7 +11,7 @@ export const runtime = 'nodejs';
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
-    
+
     // Parse filters from query parameters
     const filters: OrderFilters = {};
     const status = searchParams.get('status');
@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
     const dateFrom = searchParams.get('date_from');
     const dateTo = searchParams.get('date_to');
     const search = searchParams.get('search');
-    
+
     if (status) filters.status = status as OrderStatus;
     if (serviceType) filters.service_type = serviceType as 'dine-in' | 'pickup' | 'delivery';
     if (dateFrom) filters.date_from = dateFrom;
@@ -39,19 +39,19 @@ export async function GET(request: NextRequest) {
     if (filters.status) {
       query = query.eq('status', filters.status);
     }
-    
+
     if (filters.service_type) {
       query = query.eq('service_type', filters.service_type);
     }
-    
+
     if (filters.date_from) {
       query = query.gte('created_at', filters.date_from);
     }
-    
+
     if (filters.date_to) {
       query = query.lte('created_at', filters.date_to);
     }
-    
+
     if (filters.search) {
       const searchTerm = filters.search.toLowerCase();
       query = query.or(`order_number.ilike.%${searchTerm}%,customer_name.ilike.%${searchTerm}%,contact_number.ilike.%${searchTerm}%`);
@@ -104,7 +104,8 @@ export async function GET(request: NextRequest) {
         selected_variation: item.selected_variation,
         selected_add_ons: item.selected_add_ons,
         created_at: item.created_at
-      })) || []
+      })) || [],
+      branch_id: order.branch_id
     }));
 
     return NextResponse.json({ orders }, { status: 200 });
@@ -187,7 +188,8 @@ export async function POST(request: NextRequest) {
         lalamove_status: null,
         lalamove_tracking_url: null,
         notes: options?.notes || null,
-        customer_ip: clientIP
+        customer_ip: clientIP,
+        branch_id: options?.branchId || null
       } as any)
       .select()
       .single();
@@ -211,7 +213,7 @@ export async function POST(request: NextRequest) {
           menuItemId = uuidMatch[1];
         }
       }
-      
+
       return {
         order_id: orderData.id,
         menu_item_id: menuItemId,

@@ -33,6 +33,8 @@ function getAdminHeaders(): Record<string, string> {
   return {};
 }
 
+import { Branch } from '../types';
+
 interface CreateOrderOptions {
   address?: string;
   landmark?: string;
@@ -45,6 +47,8 @@ interface CreateOrderOptions {
   lalamoveQuotationId?: string;
   deliveryLat?: number;
   deliveryLng?: number;
+  branchId?: string;
+  branch?: Branch;
 }
 
 export const useOrders = () => {
@@ -60,11 +64,11 @@ export const useOrders = () => {
     if (!phone) return undefined;
     const trimmed = phone.trim();
     if (!trimmed) return undefined;
-    
+
     // Remove all non-digits
     const digits = trimmed.replace(/\D/g, '');
     if (!digits) return undefined;
-    
+
     // Always normalize to +63 format
     if (digits.startsWith('63')) {
       return `+${digits}`;
@@ -84,7 +88,7 @@ export const useOrders = () => {
     try {
       setLoading(true);
       setError(null);
-      
+
       // Build query string
       const params = new URLSearchParams();
       if (filters?.status) params.append('status', filters.status);
@@ -101,7 +105,7 @@ export const useOrders = () => {
           ...getAdminHeaders()
         }
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Failed to fetch orders' }));
         throw new Error(errorData.error || 'Failed to fetch orders');
@@ -126,7 +130,7 @@ export const useOrders = () => {
           ...getAdminHeaders()
         }
       });
-      
+
       if (!response.ok) {
         if (response.status === 404) {
           return null;
@@ -186,43 +190,49 @@ export const useOrders = () => {
         lalamoveConfig
       ) {
         try {
-          const normalizedRecipientPhone = normalizePhoneNumber(contactNumber) || contactNumber;
-          const lalamoveOrderResult: DeliveryOrderResult = await createDeliveryOrder(
-            options.lalamoveQuotationId,
-            customerName,
-            normalizedRecipientPhone,
-            lalamoveConfig,
-            {
-              orderId: order.id,
-              deliveryAddress: options?.address,
-              deliveryLat: options?.deliveryLat,
-              deliveryLng: options?.deliveryLng,
-            }
-          );
+          const orderLalamoveConfig = options?.branch
+            ? buildLalamoveConfig(siteSettings, options.branch)
+            : lalamoveConfig;
 
-          // Update order with Lalamove info via API
-          if (lalamoveOrderResult) {
-            await fetch(`/api/orders/${order.id}`, {
-              method: 'PATCH',
-              headers: {
-                'Content-Type': 'application/json',
-                ...getAdminHeaders(),
-              },
-              body: JSON.stringify({
-                status: order.status, // Keep current status
+          if (orderLalamoveConfig) {
+            const normalizedRecipientPhone = normalizePhoneNumber(contactNumber) || contactNumber;
+            const lalamoveOrderResult: DeliveryOrderResult = await createDeliveryOrder(
+              options.lalamoveQuotationId,
+              customerName,
+              normalizedRecipientPhone,
+              orderLalamoveConfig,
+              {
+                orderId: order.id,
+                deliveryAddress: options?.address,
+                deliveryLat: options?.deliveryLat,
+                deliveryLng: options?.deliveryLng,
+              }
+            );
+
+            // Update order with Lalamove info via API
+            if (lalamoveOrderResult) {
+              await fetch(`/api/orders/${order.id}`, {
+                method: 'PATCH',
+                headers: {
+                  'Content-Type': 'application/json',
+                  ...getAdminHeaders(),
+                },
+                body: JSON.stringify({
+                  status: order.status, // Keep current status
+                  lalamove_order_id: lalamoveOrderResult.orderId,
+                  lalamove_status: lalamoveOrderResult.status,
+                  lalamove_tracking_url: lalamoveOrderResult.shareLink,
+                }),
+              });
+
+              // Update local order object
+              order = {
+                ...order,
                 lalamove_order_id: lalamoveOrderResult.orderId,
                 lalamove_status: lalamoveOrderResult.status,
                 lalamove_tracking_url: lalamoveOrderResult.shareLink,
-              }),
-            });
-
-            // Update local order object
-            order = {
-              ...order,
-              lalamove_order_id: lalamoveOrderResult.orderId,
-              lalamove_status: lalamoveOrderResult.status,
-              lalamove_tracking_url: lalamoveOrderResult.shareLink,
-            };
+              };
+            }
           }
         } catch (orderError) {
           console.error('Failed to create Lalamove order:', orderError);
@@ -299,7 +309,7 @@ export const useOrders = () => {
           ...getAdminHeaders()
         }
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Failed to fetch stats' }));
         throw new Error(errorData.error || 'Failed to fetch stats');
@@ -335,7 +345,7 @@ export const useOrders = () => {
         async (payload) => {
           if (!isMounted) return;
           console.log('Order change received:', payload.eventType, payload.new);
-          
+
           // Refetch orders to get updated data with order_items
           if (currentFiltersRef.current) {
             await fetchOrders(currentFiltersRef.current);
@@ -354,7 +364,7 @@ export const useOrders = () => {
         async (payload) => {
           if (!isMounted) return;
           console.log('Order item change received:', payload.eventType);
-          
+
           // Refetch orders when order items change
           if (currentFiltersRef.current) {
             await fetchOrders(currentFiltersRef.current);
